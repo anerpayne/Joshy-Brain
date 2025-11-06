@@ -1,0 +1,1349 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inside Joshy's Brain!</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+```
+    body {
+        font-family: 'Courier New', monospace;
+        background: #1a1a2e;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        overflow: hidden;
+    }
+
+    #gameContainer {
+        position: relative;
+        width: 800px;
+        height: 600px;
+        border: 5px solid #4a4a6a;
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        image-rendering: pixelated;
+        image-rendering: crisp-edges;
+    }
+
+    #gameCanvas {
+        width: 100%;
+        height: 100%;
+        image-rendering: pixelated;
+        image-rendering: crisp-edges;
+    }
+
+    #startScreen, #gameOverScreen {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.9);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        color: white;
+        z-index: 10;
+    }
+
+    #gameOverScreen {
+        display: none;
+    }
+
+    h1 {
+        font-size: 42px;
+        margin-bottom: 20px;
+        text-shadow: 4px 4px 0px #ff6b9d;
+        text-align: center;
+        padding: 0 20px;
+        color: #ffd93d;
+    }
+
+    h2 {
+        font-size: 48px;
+        margin-bottom: 20px;
+        text-shadow: 3px 3px 0px #ff6b9d;
+        color: #ffd93d;
+    }
+
+    .btn {
+        padding: 15px 40px;
+        font-size: 24px;
+        background: #ff6b9d;
+        color: white;
+        border: 4px solid #fff;
+        border-radius: 0;
+        cursor: pointer;
+        font-family: 'Courier New', monospace;
+        transition: all 0.1s;
+        box-shadow: 4px 4px 0px #4a4a6a;
+        font-weight: bold;
+    }
+
+    .btn:hover {
+        background: #ff5287;
+        transform: translate(2px, 2px);
+        box-shadow: 2px 2px 0px #4a4a6a;
+    }
+
+    .btn:active {
+        transform: translate(4px, 4px);
+        box-shadow: 0px 0px 0px #4a4a6a;
+    }
+
+    #score {
+        position: absolute;
+        top: 20px;
+        right: 20px;
+        font-size: 32px;
+        font-weight: bold;
+        color: #ffd93d;
+        text-shadow: 3px 3px 0px #000;
+        z-index: 5;
+        font-family: 'Courier New', monospace;
+    }
+
+    #instructions {
+        font-size: 18px;
+        margin-top: 20px;
+        text-align: center;
+        max-width: 600px;
+        line-height: 1.8;
+        color: #6bcf7f;
+    }
+
+    #finalScore {
+        font-size: 32px;
+        margin-bottom: 20px;
+        color: #6bcf7f;
+        text-shadow: 3px 3px 0px #000;
+    }
+</style>
+```
+
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas"></canvas>
+        <div id="score">Score: 0</div>
+
+```
+    <div id="startScreen">
+        <h1>🕊️ Inside Joshy's Brain! 🧠</h1>
+        <div id="instructions">
+            <p><strong>SPACE</strong> or <strong>CLICK</strong> to flap!</p>
+            <p>Navigate through Joshy's chaotic thoughts!</p>
+            <p>Dodge dancing penguins, cute spiders, breadsticks,</p>
+            <p>corgis, axolotls, and HUGE FAT GEESE!</p>
+            <p>Collect bananas to become the invincible DUCKNANA!</p>
+        </div>
+        <button class="btn" onclick="startGame()">START GAME</button>
+    </div>
+
+    <div id="gameOverScreen">
+        <h2>GAME OVER!</h2>
+        <div id="finalScore"></div>
+        <button class="btn" onclick="restartGame()">RETRY</button>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = 800;
+    canvas.height = 600;
+    
+    // Disable image smoothing for pixel art
+    ctx.imageSmoothingEnabled = false;
+
+    // Game variables
+    let gameRunning = false;
+    let score = 0;
+    let frames = 0;
+    let powerupActive = false;
+    let powerupTimer = 0;
+    const powerupDuration = 600; // 10 seconds at 60fps
+    let audioContext;
+    let musicGainNode;
+    let currentMusicType = 'normal';
+    let musicIntervalId = null;
+
+    // Player (Fat Seagull) - Flappy Bird style
+    const player = {
+        x: 150,
+        y: canvas.height / 2,
+        width: 40,
+        height: 32,
+        velocityY: 0,
+        gravity: 0.35,
+        flapPower: -7.5,
+        rotation: 0
+    };
+
+    // Obstacles replacing cave walls
+    let obstacles = [];
+    const obstacleSpeed = 3;
+    let obstacleSpawnTimer = 0;
+    const obstacleSpawnRate = 100; // Spawn every ~1.6 seconds
+
+    // Powerups
+    let powerups = [];
+    let powerupSpawnTimer = 0;
+    const powerupSpawnRate = 300; // Spawn every 5 seconds
+
+    // Obstacle types - cute creatures from Joshy's brain!
+    const obstacleTypes = [
+        // Dancing penguins (multiple variations)
+        { name: 'penguin1', isPenguin: true, size: 40, width: 45, height: 50 },
+        { name: 'penguin2', isPenguin: true, size: 45, width: 50, height: 55 },
+        { name: 'penguin3', isPenguin: true, size: 38, width: 43, height: 48 },
+        { name: 'penguin4', isPenguin: true, size: 42, width: 47, height: 52 },
+        { name: 'penguin5', isPenguin: true, size: 44, width: 49, height: 54 },
+        
+        // Cute spiders
+        { name: 'spider1', isSpider: true, size: 35, width: 40, height: 35 },
+        { name: 'spider2', isSpider: true, size: 38, width: 43, height: 38 },
+        { name: 'spider3', isSpider: true, size: 32, width: 37, height: 32 },
+        
+        // Italian breadsticks
+        { name: 'breadstick1', text: '🥖', size: 40, color: '#d4a574', width: 50, height: 45, isBreadstick: true },
+        { name: 'breadstick2', text: '🥖', size: 45, color: '#c49a6c', width: 55, height: 50, isBreadstick: true },
+        { name: 'breadstick3', text: '🥖', size: 38, color: '#b88a5c', width: 48, height: 43, isBreadstick: true },
+        
+        // Cute corgis
+        { name: 'corgi1', isCorgi: true, size: 45, width: 55, height: 40 },
+        { name: 'corgi2', isCorgi: true, size: 42, width: 52, height: 37 },
+        { name: 'corgi3', isCorgi: true, size: 48, width: 58, height: 43 },
+        
+        // Axolotls
+        { name: 'axolotl1', isAxolotl: true, size: 40, width: 48, height: 35 },
+        { name: 'axolotl2', isAxolotl: true, size: 43, width: 51, height: 38 },
+        { name: 'axolotl3', isAxolotl: true, size: 38, width: 46, height: 33 },
+        
+        // HUGE FAT GEESE
+        { name: 'goose1', isGoose: true, size: 60, width: 70, height: 65 },
+        { name: 'goose2', isGoose: true, size: 65, width: 75, height: 70 },
+        { name: 'goose3', isGoose: true, size: 58, width: 68, height: 63 },
+        
+        // NEW CUTE ANIMALS!
+        // Bunnies
+        { name: 'bunny1', isBunny: true, size: 38, width: 42, height: 45 },
+        { name: 'bunny2', isBunny: true, size: 40, width: 44, height: 47 },
+        
+        // Cats
+        { name: 'cat1', isCat: true, size: 40, width: 45, height: 40 },
+        { name: 'cat2', isCat: true, size: 42, width: 47, height: 42 },
+        
+        // Hamsters
+        { name: 'hamster1', isHamster: true, size: 35, width: 38, height: 35 },
+        { name: 'hamster2', isHamster: true, size: 37, width: 40, height: 37 },
+        
+        // Pandas
+        { name: 'panda1', isPanda: true, size: 50, width: 55, height: 55 },
+        { name: 'panda2', isPanda: true, size: 48, width: 53, height: 53 },
+        
+        // Otters
+        { name: 'otter1', isOtter: true, size: 42, width: 50, height: 35 },
+        { name: 'otter2', isOtter: true, size: 40, width: 48, height: 33 },
+        
+        // Sloths
+        { name: 'sloth1', isSloth: true, size: 45, width: 40, height: 50 },
+        { name: 'sloth2', isSloth: true, size: 43, width: 38, height: 48 },
+        
+        // Ducks (not geese!)
+        { name: 'duck1', isDuck: true, size: 38, width: 42, height: 40 },
+        { name: 'duck2', isDuck: true, size: 40, width: 44, height: 42 },
+        
+        // Foxes
+        { name: 'fox1', isFox: true, size: 42, width: 48, height: 45 },
+        { name: 'fox2', isFox: true, size: 40, width: 46, height: 43 },
+        
+        // Hedgehogs
+        { name: 'hedgehog1', isHedgehog: true, size: 35, width: 40, height: 35 },
+        { name: 'hedgehog2', isHedgehog: true, size: 37, width: 42, height: 37 },
+        
+        // Koalas
+        { name: 'koala1', isKoala: true, size: 45, width: 48, height: 50 },
+        { name: 'koala2', isKoala: true, size: 43, width: 46, height: 48 },
+        
+        // Seals
+        { name: 'seal1', isSeal: true, size: 45, width: 55, height: 40 },
+        { name: 'seal2', isSeal: true, size: 43, width: 53, height: 38 },
+        
+        // Raccoons
+        { name: 'raccoon1', isRaccoon: true, size: 40, width: 45, height: 43 },
+        { name: 'raccoon2', isRaccoon: true, size: 42, width: 47, height: 45 },
+        
+        // Llamas
+        { name: 'llama1', isLlama: true, size: 50, width: 45, height: 60 },
+        { name: 'llama2', isLlama: true, size: 48, width: 43, height: 58 },
+        
+        // Capybaras
+        { name: 'capybara1', isCapybara: true, size: 50, width: 60, height: 45 },
+        { name: 'capybara2', isCapybara: true, size: 48, width: 58, height: 43 },
+        
+        // Owls
+        { name: 'owl1', isOwl: true, size: 42, width: 40, height: 48 },
+        { name: 'owl2', isOwl: true, size: 40, width: 38, height: 46 },
+        
+        // Frogs
+        { name: 'frog1', isFrog: true, size: 35, width: 40, height: 35 },
+        { name: 'frog2', isFrog: true, size: 37, width: 42, height: 37 },
+        
+        // Red pandas
+        { name: 'redpanda1', isRedPanda: true, size: 40, width: 45, height: 42 },
+        { name: 'redpanda2', isRedPanda: true, size: 42, width: 47, height: 44 },
+        
+        // Narwhals
+        { name: 'narwhal1', isNarwhal: true, size: 45, width: 55, height: 35 },
+        { name: 'narwhal2', isNarwhal: true, size: 43, width: 53, height: 33 },
+        
+        // Turtles
+        { name: 'turtle1', isTurtle: true, size: 38, width: 45, height: 35 },
+        { name: 'turtle2', isTurtle: true, size: 40, width: 47, height: 37 },
+        
+        // Pigs
+        { name: 'pig1', isPig: true, size: 40, width: 45, height: 40 },
+        { name: 'pig2', isPig: true, size: 42, width: 47, height: 42 },
+        
+        // Sheep
+        { name: 'sheep1', isSheep: true, size: 42, width: 48, height: 45 },
+        { name: 'sheep2', isSheep: true, size: 40, width: 46, height: 43 },
+        
+        // Squirrels
+        { name: 'squirrel1', isSquirrel: true, size: 35, width: 38, height: 42 },
+        { name: 'squirrel2', isSquirrel: true, size: 37, width: 40, height: 44 },
+        
+        // Dolphins
+        { name: 'dolphin1', isDolphin: true, size: 45, width: 55, height: 35 },
+        { name: 'dolphin2', isDolphin: true, size: 43, width: 53, height: 33 },
+        
+        // Flamingos
+        { name: 'flamingo1', isFlamingo: true, size: 45, width: 40, height: 60 },
+        { name: 'flamingo2', isFlamingo: true, size: 43, width: 38, height: 58 }
+    ];
+
+    // Input handling
+    document.addEventListener('keydown', (e) => {
+        if (e.code === 'Space' && gameRunning && !powerupActive) {
+            initAudio();
+            flap();
+            e.preventDefault();
+        }
+    });
+
+    canvas.addEventListener('click', () => {
+        if (gameRunning && !powerupActive) {
+            initAudio();
+            flap();
+        }
+    });
+
+    function flap() {
+        player.velocityY = player.flapPower;
+        createParticles(player.x, player.y + player.height / 2, '#ffffff', 3);
+    }
+
+    function startGame() {
+        document.getElementById('startScreen').style.display = 'none';
+        initAudio();
+        gameRunning = true;
+        score = 0;
+        frames = 0;
+        obstacles = [];
+        powerups = [];
+        particles = [];
+        powerupActive = false;
+        powerupTimer = 0;
+        powerupSpawnTimer = 0;
+        obstacleSpawnTimer = 0;
+        player.y = canvas.height / 2;
+        player.velocityY = 0;
+        player.rotation = 0;
+        
+        gameLoop();
+    }
+
+    function restartGame() {
+        document.getElementById('gameOverScreen').style.display = 'none';
+        startGame();
+    }
+
+    function createObstacle() {
+        const type = obstacleTypes[Math.floor(Math.random() * obstacleTypes.length)];
+        
+        // Random vertical position
+        const minY = 100;
+        const maxY = canvas.height - 100;
+        const y = Math.random() * (maxY - minY) + minY;
+        
+        // Determine starting position - some from top, some from bottom, some from right
+        let x, vx, vy;
+        const spawnType = Math.random();
+        
+        if (spawnType < 0.5) {
+            // From right side
+            x = canvas.width + 50;
+            vx = -obstacleSpeed;
+            vy = (Math.random() - 0.5) * 2;
+        } else if (spawnType < 0.75) {
+            // From top
+            x = Math.random() * canvas.width;
+            vx = (Math.random() - 0.5) * 2;
+            vy = 2;
+        } else {
+            // From bottom
+            x = Math.random() * canvas.width;
+            vx = (Math.random() - 0.5) * 2;
+            vy = -2;
+        }
+        
+        obstacles.push({
+            x: x,
+            y: y,
+            vx: vx,
+            vy: vy,
+            width: type.width,
+            height: type.height,
+            text: type.text,
+            size: type.size,
+            color: type.color,
+            rotation: 0,
+            rotationSpeed: (Math.random() - 0.5) * 0.15,
+            bobOffset: Math.random() * Math.PI * 2,
+            isPenguin: type.isPenguin || false,
+            isSpider: type.isSpider || false,
+            isBreadstick: type.isBreadstick || false,
+            isCorgi: type.isCorgi || false,
+            isAxolotl: type.isAxolotl || false,
+            isGoose: type.isGoose || false,
+            isBunny: type.isBunny || false,
+            isCat: type.isCat || false,
+            isHamster: type.isHamster || false,
+            isPanda: type.isPanda || false,
+            isOtter: type.isOtter || false,
+            isSloth: type.isSloth || false,
+            isDuck: type.isDuck || false,
+            isFox: type.isFox || false,
+            isHedgehog: type.isHedgehog || false,
+            isKoala: type.isKoala || false,
+            isSeal: type.isSeal || false,
+            isRaccoon: type.isRaccoon || false,
+            isLlama: type.isLlama || false,
+            isCapybara: type.isCapybara || false,
+            isOwl: type.isOwl || false,
+            isFrog: type.isFrog || false,
+            isRedPanda: type.isRedPanda || false,
+            isNarwhal: type.isNarwhal || false,
+            isTurtle: type.isTurtle || false,
+            isPig: type.isPig || false,
+            isSheep: type.isSheep || false,
+            isSquirrel: type.isSquirrel || false,
+            isDolphin: type.isDolphin || false,
+            isFlamingo: type.isFlamingo || false,
+            name: type.name,
+            dancePhase: Math.random() * Math.PI * 2
+        });
+    }
+
+    function createPowerup() {
+        // Spawn powerup on screen
+        const x = canvas.width + 50;
+        const y = 150 + Math.random() * (canvas.height - 300);
+        
+        powerups.push({
+            x: x,
+            y: y,
+            width: 32,
+            height: 32,
+            rotation: 0,
+            collected: false,
+            bobOffset: 0
+        });
+    }
+
+    function createParticles(x, y, color, count) {
+        for (let i = 0; i < count; i++) {
+            particles.push({
+                x: x,
+                y: y,
+                vx: (Math.random() - 0.5) * 4,
+                vy: (Math.random() - 0.5) * 4,
+                life: 20,
+                color: color,
+                size: Math.random() * 4 + 2
+            });
+        }
+    }
+
+    function updatePlayer() {
+        if (powerupActive) {
+            // Ducknana mode - autopilot with gentle wave motion
+            const waveHeight = 60;
+            const waveSpeed = 0.05;
+            const targetY = canvas.height / 2 + Math.sin(frames * waveSpeed) * waveHeight;
+            
+            // Smooth movement towards wave position
+            player.y += (targetY - player.y) * 0.1;
+            player.velocityY = 0;
+            player.rotation = Math.sin(frames * waveSpeed) * 0.3;
+            
+            // Update powerup timer
+            powerupTimer++;
+            if (powerupTimer >= powerupDuration) {
+                powerupActive = false;
+                powerupTimer = 0;
+                // Switch back to normal music
+                if (audioContext) {
+                    createMusic('normal');
+                }
+            }
+            
+            // Rainbow particles trail
+            if (frames % 3 === 0) {
+                const colors = ['#ff0000', '#ff7f00', '#ffff00', '#00ff00', '#0000ff', '#8b00ff'];
+                createParticles(player.x, player.y + player.height / 2, colors[frames % colors.length], 2);
+            }
+        } else {
+            // Normal gravity mode
+            player.velocityY += player.gravity;
+            player.y += player.velocityY;
+            
+            // Rotation based on velocity
+            player.rotation = Math.min(Math.max(player.velocityY * 0.05, -0.5), 0.5);
+            
+            // Check ceiling and floor collision
+            if (player.y < 0 || player.y + player.height > canvas.height) {
+                gameOver();
+            }
+        }
+    }
+
+    function updateObstacles() {
+        // Spawn new obstacles
+        obstacleSpawnTimer++;
+        if (obstacleSpawnTimer >= obstacleSpawnRate) {
+            createObstacle();
+            obstacleSpawnTimer = 0;
+        }
+        
+        // Update existing obstacles
+        for (let i = obstacles.length - 1; i >= 0; i--) {
+            const obs = obstacles[i];
+            
+            obs.x += obs.vx;
+            obs.y += obs.vy;
+            obs.rotation += obs.rotationSpeed;
+            obs.bobOffset += 0.05;
+            obs.dancePhase += 0.1;
+            
+            // Bounce off screen edges
+            if (obs.y < 0) {
+                obs.y = 0;
+                obs.vy = Math.abs(obs.vy);
+            } else if (obs.y > canvas.height) {
+                obs.y = canvas.height;
+                obs.vy = -Math.abs(obs.vy);
+            }
+            
+            // Remove if off screen
+            if (obs.x < -100 || obs.x > canvas.width + 100) {
+                obstacles.splice(i, 1);
+                score += 5;
+                document.getElementById('score').textContent = `Score: ${score}`;
+                continue;
+            }
+            
+            // Check collision only if not in powerup mode
+            if (!powerupActive) {
+                const dx = (obs.x) - (player.x + player.width / 2);
+                const dy = (obs.y) - (player.y + player.height / 2);
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                if (distance < 35) {
+                    gameOver();
+                }
+            }
+        }
+    }
+
+    function updatePowerups() {
+        // Spawn powerups
+        powerupSpawnTimer++;
+        if (powerupSpawnTimer >= powerupSpawnRate && !powerupActive) {
+            createPowerup();
+            powerupSpawnTimer = 0;
+        }
+        
+        // Update existing powerups
+        for (let i = powerups.length - 1; i >= 0; i--) {
+            const powerup = powerups[i];
+            
+            powerup.x -= obstacleSpeed;
+            powerup.rotation += 0.05;
+            powerup.bobOffset += 0.1;
+            
+            // Remove if off screen
+            if (powerup.x < -50) {
+                powerups.splice(i, 1);
+                continue;
+            }
+            
+            // Check collection
+            if (!powerup.collected) {
+                const dx = powerup.x - (player.x + player.width / 2);
+                const dy = (powerup.y + Math.sin(powerup.bobOffset) * 10) - (player.y + player.height / 2);
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                if (distance < 40) {
+                    powerup.collected = true;
+                    powerupActive = true;
+                    powerupTimer = 0;
+                    createParticles(powerup.x, powerup.y, '#ffff00', 15);
+                    powerups.splice(i, 1);
+                    // Switch to powerup music!
+                    if (audioContext) {
+                        createMusic('powerup');
+                    }
+                }
+            }
+        }
+    }
+
+    // Particles for effects
+    let particles = [];
+
+    // Initialize audio on first user interaction
+    function initAudio() {
+        if (!audioContext) {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            createMusic('normal');
+        }
+    }
+
+    // Create catchy 8-bit style music loop
+    function createMusic(type) {
+        if (!audioContext) return;
+        
+        // Stop existing music
+        if (musicIntervalId) {
+            clearTimeout(musicIntervalId);
+        }
+        
+        if (!musicGainNode) {
+            musicGainNode = audioContext.createGain();
+            musicGainNode.gain.value = 0.3;
+            musicGainNode.connect(audioContext.destination);
+        }
+        
+        currentMusicType = type;
+        
+        if (type === 'powerup') {
+            // Fast-paced power-up music!
+            const powerupMelody = [
+                [659.25, 0.1], // E5
+                [783.99, 0.1], // G5
+                [880.00, 0.1], // A5
+                [1046.50, 0.2], // C6
+                [880.00, 0.1], // A5
+                [1046.50, 0.2], // C6
+                [1174.66, 0.3], // D6
+                [1046.50, 0.1], // C6
+                [880.00, 0.1], // A5
+                [783.99, 0.1], // G5
+                [659.25, 0.2], // E5
+                [783.99, 0.2], // G5
+                [880.00, 0.3], // A5
+            ];
+            
+            function playPowerupMelody(startTime) {
+                let time = startTime;
+                
+                powerupMelody.forEach(([freq, duration]) => {
+                    const osc = audioContext.createOscillator();
+                    const gain = audioContext.createGain();
+                    
+                    osc.type = 'square';
+                    osc.frequency.value = freq;
+                    
+                    gain.gain.setValueAtTime(0.2, time);
+                    gain.gain.exponentialRampToValueAtTime(0.01, time + duration);
+                    
+                    osc.connect(gain);
+                    gain.connect(musicGainNode);
+                    
+                    osc.start(time);
+                    osc.stop(time + duration);
+                    
+                    time += duration;
+                });
+                
+                // Schedule next loop
+                const loopDuration = powerupMelody.reduce((sum, [_, dur]) => sum + dur, 0);
+                musicIntervalId = setTimeout(() => {
+                    if (currentMusicType === 'powerup') {
+                        playPowerupMelody(audioContext.currentTime);
+                    }
+                }, loopDuration * 1000);
+            }
+            
+            playPowerupMelody(audioContext.currentTime);
+            
+        } else {
+            // Normal melody
+            const melody = [
+                [523.25, 0.2], // C5
+                [587.33, 0.2], // D5
+                [659.25, 0.2], // E5
+                [783.99, 0.4], // G5
+                [659.25, 0.2], // E5
+                [783.99, 0.4], // G5
+                [880.00, 0.8], // A5
+                [783.99, 0.2], // G5
+                [659.25, 0.2], // E5
+                [587.33, 0.2], // D5
+                [523.25, 0.4], // C5
+                [587.33, 0.4], // D5
+                [659.25, 0.8], // E5
+            ];
+            
+            function playMelody(startTime) {
+                let time = startTime;
+                
+                melody.forEach(([freq, duration]) => {
+                    const osc = audioContext.createOscillator();
+                    const gain = audioContext.createGain();
+                    
+                    osc.type = 'square';
+                    osc.frequency.value = freq;
+                    
+                    gain.gain.setValueAtTime(0.15, time);
+                    gain.gain.exponentialRampToValueAtTime(0.01, time + duration);
+                    
+                    osc.connect(gain);
+                    gain.connect(musicGainNode);
+                    
+                    osc.start(time);
+                    osc.stop(time + duration);
+                    
+                    time += duration;
+                });
+                
+                // Schedule next loop
+                const loopDuration = melody.reduce((sum, [_, dur]) => sum + dur, 0);
+                musicIntervalId = setTimeout(() => {
+                    if (currentMusicType === 'normal') {
+                        playMelody(audioContext.currentTime);
+                    }
+                }, loopDuration * 1000);
+            }
+            
+            playMelody(audioContext.currentTime);
+        }
+    }
+
+    function updateParticles() {
+        for (let i = particles.length - 1; i >= 0; i--) {
+            const p = particles[i];
+            p.x += p.vx;
+            p.y += p.vy;
+            p.life--;
+            p.vx *= 0.95;
+            p.vy *= 0.95;
+            
+            if (p.life <= 0) {
+                particles.splice(i, 1);
+            }
+        }
+    }
+
+    function drawPixelRect(x, y, width, height, color) {
+        ctx.fillStyle = color;
+        ctx.fillRect(Math.floor(x), Math.floor(y), Math.floor(width), Math.floor(height));
+    }
+
+    function drawBackground() {
+        // Colorful gradient background
+        const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+        gradient.addColorStop(0, '#ff6b9d');
+        gradient.addColorStop(0.3, '#c44569');
+        gradient.addColorStop(0.6, '#6c5ce7');
+        gradient.addColorStop(1, '#a29bfe');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Add floating pixel stars
+        for (let i = 0; i < 30; i++) {
+            const x = (i * 30 + frames * 0.3) % canvas.width;
+            const y = (Math.sin(i * 0.5 + frames * 0.01) * 150 + canvas.height / 2) % canvas.height;
+            const twinkle = Math.sin(frames * 0.1 + i) * 0.5 + 0.5;
+            ctx.fillStyle = `rgba(255, 255, 255, ${twinkle})`;
+            ctx.fillRect(x, y, 4, 4);
+        }
+    }
+
+    function drawObstacles() {
+        obstacles.forEach(obs => {
+            ctx.save();
+            ctx.translate(obs.x, obs.y);
+            ctx.rotate(obs.rotation);
+            
+            if (obs.isPenguin) {
+                // Dancing penguin!
+                const danceX = Math.sin(obs.dancePhase) * 3;
+                const danceY = Math.sin(obs.dancePhase * 2) * 2;
+                
+                // Body
+                drawPixelRect(-20 + danceX, -25 + danceY, 40, 50, '#000000');
+                
+                // Belly
+                drawPixelRect(-12 + danceX, -15 + danceY, 24, 35, '#ffffff');
+                
+                // Eyes
+                drawPixelRect(-10 + danceX, -20 + danceY, 6, 6, '#ffffff');
+                drawPixelRect(4 + danceX, -20 + danceY, 6, 6, '#ffffff');
+                drawPixelRect(-8 + danceX, -18 + danceY, 3, 3, '#000000');
+                drawPixelRect(6 + danceX, -18 + danceY, 3, 3, '#000000');
+                
+                // Beak
+                drawPixelRect(-4 + danceX, -12 + danceY, 8, 5, '#ffa500');
+                
+                // Flippers (dancing!)
+                drawPixelRect(-25 + danceX, 0, 8, 15, '#000000');
+                drawPixelRect(17 + danceX, 0, 8, 15, '#000000');
+                
+                // Feet
+                drawPixelRect(-15 + danceX, 23 + danceY, 10, 6, '#ffa500');
+                drawPixelRect(5 + danceX, 23 + danceY, 10, 6, '#ffa500');
+                
+                // Party hat!
+                ctx.fillStyle = '#ff00ff';
+                ctx.beginPath();
+                ctx.moveTo(danceX, -35 + danceY);
+                ctx.lineTo(-10 + danceX, -25 + danceY);
+                ctx.lineTo(10 + danceX, -25 + danceY);
+                ctx.closePath();
+                ctx.fill();
+                
+                // Musical notes
+                ctx.fillStyle = '#ffff00';
+                ctx.font = 'bold 16px Arial';
+                ctx.fillText('♪', 25 + danceX, -20 + danceY);
+                ctx.fillText('♫', -30 + danceX, -15 + danceY);
+                
+            } else if (obs.isSpider) {
+                // Cute spider with big eyes!
+                const legWiggle = Math.sin(obs.dancePhase) * 3;
+                
+                // Body
+                drawPixelRect(-15, -12, 30, 24, '#8B4513');
+                
+                // Cute big eyes
+                drawPixelRect(-12, -8, 10, 10, '#ffffff');
+                drawPixelRect(2, -8, 10, 10, '#ffffff');
+                drawPixelRect(-8, -4, 6, 6, '#000000');
+                drawPixelRect(6, -4, 6, 6, '#000000');
+                
+                // Eye shine
+                drawPixelRect(-6, -2, 2, 2, '#ffffff');
+                drawPixelRect(8, -2, 2, 2, '#ffffff');
+                
+                // Smile
+                ctx.strokeStyle = '#000000';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(0, 4, 8, 0, Math.PI);
+                ctx.stroke();
+                
+                // 8 cute legs
+                ctx.strokeStyle = '#654321';
+                ctx.lineWidth = 3;
+                for (let i = 0; i < 4; i++) {
+                    // Left legs
+                    ctx.beginPath();
+                    ctx.moveTo(-15, -8 + i * 5);
+                    ctx.lineTo(-25, -12 + i * 8 + legWiggle);
+                    ctx.stroke();
+                    
+                    // Right legs
+                    ctx.beginPath();
+                    ctx.moveTo(15, -8 + i * 5);
+                    ctx.lineTo(25, -12 + i * 8 - legWiggle);
+                    ctx.stroke();
+                }
+                
+            } else if (obs.isBreadstick) {
+                // Italian breadstick
+                ctx.fillStyle = '#d4a574';
+                
+                // Breadstick body
+                drawPixelRect(-20, -6, 40, 12, '#d4a574');
+                
+                // Texture lines
+                ctx.strokeStyle = '#b88a5c';
+                ctx.lineWidth = 2;
+                for (let i = -15; i < 20; i += 5) {
+                    ctx.beginPath();
+                    ctx.moveTo(i, -6);
+                    ctx.lineTo(i + 2, 6);
+                    ctx.stroke();
+                }
+                
+                // Sesame seeds
+                ctx.fillStyle = '#f5deb3';
+                for (let i = 0; i < 6; i++) {
+                    const seedX = -15 + i * 7;
+                    const seedY = -3 + Math.sin(i) * 2;
+                    drawPixelRect(seedX, seedY, 3, 2, '#f5deb3');
+                }
+                
+                // Text emoji
+                ctx.font = `${obs.size}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.fillText(obs.text, 0, -20);
+                
+            } else if (obs.isCorgi) {
+                // Cute corgi dog!
+                const wiggle = Math.sin(obs.dancePhase) * 2;
+                
+                // Body
+                drawPixelRect(-25, -10 + wiggle, 50, 20, '#d4a017');
+                
+                // White chest
+                drawPixelRect(-15, -5 + wiggle, 30, 12, '#ffffff');
+                
+                // Head
+                drawPixelRect(-18, -20 + wiggle, 20, 15, '#d4a017');
+                
+                // Ears (big and pointy!)
+                ctx.fillStyle = '#d4a017';
+                ctx.beginPath();
+                ctx.moveTo(-18, -20 + wiggle);
+                ctx.lineTo(-22, -30 + wiggle);
+                ctx.lineTo(-14, -22 + wiggle);
+                ctx.closePath();
+                ctx.fill();
+                
+                ctx.beginPath();
+                ctx.moveTo(2, -20 + wiggle);
+                ctx.lineTo(6, -30 + wiggle);
+                ctx.lineTo(-2, -22 + wiggle);
+                ctx.closePath();
+                ctx.fill();
+                
+                // Eyes
+                drawPixelRect(-14, -16 + wiggle, 5, 5, '#000000');
+                drawPixelRect(-6, -16 + wiggle, 5, 5, '#000000');
+                drawPixelRect(-13, -15 + wiggle, 2, 2, '#ffffff');
+                drawPixelRect(-5, -15 + wiggle, 2, 2, '#ffffff');
+                
+                // Nose
+                drawPixelRect(-12, -10 + wiggle, 6, 4, '#000000');
+                
+                // Smile
+                ctx.strokeStyle = '#000000';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(-9, -8 + wiggle, 3, 0, Math.PI);
+                ctx.stroke();
+                
+                // Short legs
+                drawPixelRect(-20, 10 + wiggle, 6, 8, '#d4a017');
+                drawPixelRect(-8, 10 + wiggle, 6, 8, '#d4a017');
+                drawPixelRect(4, 10 + wiggle, 6, 8, '#d4a017');
+                drawPixelRect(16, 10 + wiggle, 6, 8, '#d4a017');
+                
+                // Tail wagging
+                const tailWag = Math.sin(obs.dancePhase * 2) * 8;
+                drawPixelRect(25, -8 + wiggle + tailWag, 8, 6, '#d4a017');
+                
+            } else if (obs.isAxolotl) {
+                // Cute axolotl!
+                const swim = Math.sin(obs.dancePhase) * 2;
+                
+                // Body
+                drawPixelRect(-20, -10 + swim, 40, 20, '#ffb3d9');
+                
+                // Head
+                drawPixelRect(-18, -15 + swim, 25, 18, '#ffb3d9');
+                
+                // External gills (the frilly things!)
+                ctx.fillStyle = '#ff69b4';
+                // Left gills
+                for (let i = 0; i < 3; i++) {
+                    drawPixelRect(-25, -12 + i * 4 + swim, 8, 3, '#ff69b4');
+                }
+                // Right gills
+                for (let i = 0; i < 3; i++) {
+                    drawPixelRect(17, -12 + i * 4 + swim, 8, 3, '#ff69b4');
+                }
+                
+                // Eyes (cute and beady)
+                drawPixelRect(-12, -10 + swim, 4, 4, '#000000');
+                drawPixelRect(-4, -10 + swim, 4, 4, '#000000');
+                
+                // Smile
+                ctx.strokeStyle = '#000000';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(-8, -5 + swim, 5, 0, Math.PI);
+                ctx.stroke();
+                
+                // Little legs
+                drawPixelRect(-18, 8 + swim, 5, 6, '#ffb3d9');
+                drawPixelRect(-8, 8 + swim, 5, 6, '#ffb3d9');
+                drawPixelRect(3, 8 + swim, 5, 6, '#ffb3d9');
+                drawPixelRect(13, 8 + swim, 5, 6, '#ffb3d9');
+                
+                // Tail
+                ctx.fillStyle = '#ffb3d9';
+                ctx.beginPath();
+                ctx.moveTo(20, 0 + swim);
+                ctx.lineTo(35, -5 + swim);
+                ctx.lineTo(35, 5 + swim);
+                ctx.closePath();
+                ctx.fill();
+                
+            } else if (obs.isGoose) {
+                // HUGE FAT GOOSE!!!
+                const waddle = Math.sin(obs.dancePhase) * 4;
+                
+                // CHONKY body
+                drawPixelRect(-35, -30 + waddle, 70, 60, '#ffffff');
+                
+                // Even chonkier belly
+                drawPixelRect(-30, -20 + waddle, 60, 45, '#f0f0f0');
+                
+                // Long neck
+                drawPixelRect(-8, -45 + waddle, 16, 20, '#ffffff');
+                
+                // Head
+                drawPixelRect(-12, -55 + waddle, 24, 18, '#ffffff');
+                
+                // Angry eyes
+                drawPixelRect(-10, -50 + waddle, 6, 4, '#000000');
+                drawPixelRect(4, -50 + waddle, 6, 4, '#000000');
+                
+                // MEAN looking beak
+                ctx.fillStyle = '#ffa500';
+                ctx.beginPath();
+                ctx.moveTo(12, -48 + waddle);
+                ctx.lineTo(22, -45 + waddle);
+                ctx.lineTo(12, -42 + waddle);
+                ctx.closePath();
+                ctx.fill();
+                
+                // Wings
+                drawPixelRect(-40, -15 + waddle, 12, 25, '#e0e0e0');
+                drawPixelRect(28, -15 + waddle, 12, 25, '#e0e0e0');
+                
+                // Strong legs
+                drawPixelRect(-20, 30 + waddle, 10, 15, '#ffa500');
+                drawPixelRect(10, 30 + waddle, 10, 15, '#ffa500');
+                
+                // Big feet
+                drawPixelRect(-25, 45 + waddle, 18, 6, '#ffa500');
+                drawPixelRect(7, 45 + waddle, 18, 6, '#ffa500');
+                
+                // HONK text
+                ctx.fillStyle = '#ff0000';
+                ctx.font = 'bold 20px "Courier New"';
+                ctx.textAlign = 'center';
+                ctx.fillText('HONK!', 0, -70 + waddle);
+                
+            } else {
+                // All other cute animals - using emoji rendering for simplicity!
+                const animalEmojis = {
+                    isBunny: '🐰',
+                    isCat: '🐱',
+                    isHamster: '🐹',
+                    isPanda: '🐼',
+                    isOtter: '🦦',
+                    isSloth: '🦥',
+                    isDuck: '🦆',
+                    isFox: '🦊',
+                    isHedgehog: '🦔',
+                    isKoala: '🐨',
+                    isSeal: '🦭',
+                    isRaccoon: '🦝',
+                    isLlama: '🦙',
+                    isCapybara: '🦫',
+                    isOwl: '🦉',
+                    isFrog: '🐸',
+                    isRedPanda: '🐼',
+                    isNarwhal: '🦄',
+                    isTurtle: '🐢',
+                    isPig: '🐷',
+                    isSheep: '🐑',
+                    isSquirrel: '🐿️',
+                    isDolphin: '🐬',
+                    isFlamingo: '🦩'
+                };
+                
+                // Find the emoji for this animal
+                let emoji = '❓';
+                for (const [key, value] of Object.entries(animalEmojis)) {
+                    if (obs[key]) {
+                        emoji = value;
+                        break;
+                    }
+                }
+                
+                // Draw with wiggle animation
+                const wiggle = Math.sin(obs.dancePhase) * 3;
+                ctx.font = `${obs.size * 1.5}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                
+                // Shadow
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = '#000000';
+                ctx.fillText(emoji, wiggle, 0);
+                ctx.shadowBlur = 0;
+            }
+            
+            ctx.restore();
+        });
+    }
+
+    function drawPlayer() {
+        ctx.save();
+        ctx.translate(player.x + player.width / 2, player.y + player.height / 2);
+        ctx.rotate(player.rotation);
+        
+        if (powerupActive) {
+            // DUCKNANA MODE - half duck, half banana with dancing animation
+            const danceOffset = Math.sin(frames * 0.2) * 3;
+            
+            // Banana body (yellow curved)
+            ctx.fillStyle = '#ffed4e';
+            ctx.beginPath();
+            ctx.ellipse(0, 0, player.width / 2 + 5, player.height / 2 + 5, 0.2, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Banana spots
+            ctx.fillStyle = '#d4a017';
+            drawPixelRect(-10, -5, 6, 8, '#d4a017');
+            drawPixelRect(8, 5, 5, 6, '#d4a017');
+            drawPixelRect(-5, 8, 7, 5, '#d4a017');
+            
+            // Duck head on top
+            drawPixelRect(-8 + danceOffset, -player.height / 2 - 10, 16, 16, '#ffffff');
+            
+            // Duck eye
+            drawPixelRect(-2 + danceOffset, -player.height / 2 - 6, 4, 4, '#000000');
+            drawPixelRect(-1 + danceOffset, -player.height / 2 - 5, 2, 2, '#ffffff');
+            
+            // Duck beak
+            drawPixelRect(4 + danceOffset, -player.height / 2 - 4, 8, 6, '#ffa500');
+            
+            // Funky sunglasses
+            ctx.fillStyle = '#000000';
+            drawPixelRect(-10 + danceOffset, -player.height / 2 - 8, 12, 4, '#000000');
+            ctx.fillStyle = '#ff00ff';
+            drawPixelRect(-9 + danceOffset, -player.height / 2 - 7, 2, 2, '#ff00ff');
+            
+            // Dancing arms
+            const armWave = Math.sin(frames * 0.3) * 8;
+            drawPixelRect(-player.width / 2 - 8, 0 + armWave, 8, 4, '#ffed4e');
+            drawPixelRect(player.width / 2, 0 - armWave, 8, 4, '#ffed4e');
+            
+            // Sparkles around ducknana
+            if (frames % 5 === 0) {
+                ctx.fillStyle = '#ffffff';
+                for (let i = 0; i < 3; i++) {
+                    const angle = (frames * 0.1 + i * Math.PI * 2 / 3);
+                    const sparkX = Math.cos(angle) * 30;
+                    const sparkY = Math.sin(angle) * 30;
+                    drawPixelRect(sparkX, sparkY, 3, 3, '#ffff00');
+                }
+            }
+            
+        } else {
+            // Normal seagull mode
+            // Body (chubby pixel seagull)
+            drawPixelRect(-player.width / 2, -player.height / 2, player.width, player.height, '#ffffff');
+            
+            // Wing flap animation
+            const wingFlap = Math.sin(frames * 0.3) * 6;
+            drawPixelRect(-player.width / 2 - 6, -player.height / 2 + 8 + wingFlap, 10, 8, '#e0e0e0');
+            
+            // Belly
+            drawPixelRect(-player.width / 2 + 8, player.height / 2 - 16, 16, 12, '#f0f0f0');
+            
+            // Head
+            drawPixelRect(player.width / 2 - 16, -player.height / 2 + 4, 16, 16, '#ffffff');
+            
+            // Eye
+            drawPixelRect(player.width / 2 - 6, -player.height / 2 + 8, 4, 4, '#000000');
+            drawPixelRect(player.width / 2 - 5, -player.height / 2 + 9, 2, 2, '#ffffff');
+            
+            // Beak
+            drawPixelRect(player.width / 2 - 2, -player.height / 2 + 12, 8, 6, '#ffa500');
+            
+            // Outline
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(-player.width / 2, -player.height / 2, player.width, player.height);
+        }
+        
+        ctx.restore();
+    }
+
+    function drawPowerups() {
+        powerups.forEach(powerup => {
+            ctx.save();
+            const yBob = Math.sin(powerup.bobOffset) * 10;
+            ctx.translate(powerup.x, powerup.y + yBob);
+            ctx.rotate(powerup.rotation);
+            
+            // Banana powerup!
+            const w = powerup.width;
+            const h = powerup.height;
+            
+            // Glow effect
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = '#ffff00';
+            
+            // Banana body
+            ctx.fillStyle = '#ffed4e';
+            ctx.beginPath();
+            ctx.ellipse(0, 0, w / 2, h / 2, 0.3, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Banana spots
+            ctx.fillStyle = '#d4a017';
+            drawPixelRect(-8, -4, 4, 6, '#d4a017');
+            drawPixelRect(6, 3, 3, 5, '#d4a017');
+            
+            // Banana stem
+            ctx.fillStyle = '#8b6914';
+            drawPixelRect(-2, -h / 2, 4, 6, '#8b6914');
+            
+            // Outline
+            ctx.shadowBlur = 0;
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, w / 2, h / 2, 0.3, 0, Math.PI * 2);
+            ctx.stroke();
+            
+            ctx.restore();
+        });
+    }
+
+    function drawParticles() {
+        particles.forEach(p => {
+            ctx.fillStyle = p.color;
+            ctx.globalAlpha = p.life / 20;
+            drawPixelRect(p.x, p.y, p.size, p.size, p.color);
+            ctx.globalAlpha = 1;
+        });
+    }
+
+    function gameLoop() {
+        if (!gameRunning) return;
+        
+        frames++;
+
+        // Update
+        updatePlayer();
+        updateObstacles();
+        updatePowerups();
+        updateParticles();
+
+        // Draw
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        drawBackground();
+        drawObstacles();
+        drawPowerups();
+        drawPlayer();
+        drawParticles();
+        
+        // Draw powerup timer bar if active
+        if (powerupActive) {
+            const barWidth = 200;
+            const barHeight = 20;
+            const barX = canvas.width / 2 - barWidth / 2;
+            const barY = 30;
+            const progress = 1 - (powerupTimer / powerupDuration);
+            
+            // Background
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(barX - 2, barY - 2, barWidth + 4, barHeight + 4);
+            
+            // Progress bar
+            const gradient = ctx.createLinearGradient(barX, 0, barX + barWidth, 0);
+            gradient.addColorStop(0, '#ff00ff');
+            gradient.addColorStop(0.5, '#ffff00');
+            gradient.addColorStop(1, '#00ffff');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(barX, barY, barWidth * progress, barHeight);
+            
+            // Border
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(barX, barY, barWidth, barHeight);
+            
+            // Text
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 14px "Courier New"';
+            ctx.textAlign = 'center';
+            ctx.fillText('🍌 DUCKNANA MODE! 🍌', canvas.width / 2, barY + barHeight + 20);
+            
+            // BIG PULSING "DUCKNANA POWER!" TEXT
+            const pulseScale = 1 + Math.sin(frames * 0.15) * 0.2;
+            const textSize = 72 * pulseScale;
+            ctx.save();
+            ctx.translate(canvas.width / 2, canvas.height / 2);
+            
+            // Shadow/outline
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = '#ffff00';
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 8;
+            ctx.font = `bold ${textSize}px "Courier New"`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.strokeText('DUCKNANA', 0, -40);
+            ctx.strokeText('POWER!', 0, 40);
+            
+            // Rainbow gradient fill
+            const textGradient = ctx.createLinearGradient(-200, 0, 200, 0);
+            textGradient.addColorStop(0, '#ff00ff');
+            textGradient.addColorStop(0.25, '#ff0000');
+            textGradient.addColorStop(0.5, '#ffff00');
+            textGradient.addColorStop(0.75, '#00ff00');
+            textGradient.addColorStop(1, '#00ffff');
+            ctx.fillStyle = textGradient;
+            ctx.fillText('DUCKNANA', 0, -40);
+            ctx.fillText('POWER!', 0, 40);
+            
+            ctx.restore();
+        }
+
+        requestAnimationFrame(gameLoop);
+    }
+
+    function gameOver() {
+        gameRunning = false;
+        createParticles(player.x + player.width / 2, player.y + player.height / 2, '#ff0000', 20);
+        document.getElementById('finalScore').textContent = `Final Score: ${score}`;
+        document.getElementById('gameOverScreen').style.display = 'flex';
+    }
+</script>
+```
+
+</body>
+</html>
